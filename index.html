@@ -35,13 +35,13 @@
     const errorDiv = document.getElementById('error-message');
     let drawing = false;
     let lastX, lastY;
+    let color = 'lime';
 
     function showError(message) {
       errorDiv.textContent = message;
       errorDiv.style.display = 'block';
     }
 
-    // Resize canvas
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
@@ -49,7 +49,26 @@
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    // Setup MediaPipe Hands
+    function drawHandLandmarks(landmarks) {
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      for (const point of landmarks) {
+        const x = point.x * canvas.width;
+        const y = point.y * canvas.height;
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+    }
+
+    function isPinching(landmarks) {
+      const indexTip = landmarks[8];
+      const thumbTip = landmarks[4];
+      const dx = indexTip.x - thumbTip.x;
+      const dy = indexTip.y - thumbTip.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      return distance < 0.05;
+    }
+
     const hands = new Hands({locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
     hands.setOptions({
       maxNumHands: 1,
@@ -59,8 +78,16 @@
     });
 
     hands.onResults(results => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const indexFinger = results.multiHandLandmarks[0][8];
+        const landmarks = results.multiHandLandmarks[0];
+        drawHandLandmarks(landmarks);
+
+        if (isPinching(landmarks)) {
+          color = color === 'lime' ? 'magenta' : 'lime';
+        }
+
+        const indexFinger = landmarks[8];
         const x = indexFinger.x * canvas.width;
         const y = indexFinger.y * canvas.height;
 
@@ -70,7 +97,7 @@
           drawing = true;
         }
 
-        ctx.strokeStyle = 'lime';
+        ctx.strokeStyle = color;
         ctx.lineWidth = 4;
         ctx.beginPath();
         ctx.moveTo(lastX, lastY);
