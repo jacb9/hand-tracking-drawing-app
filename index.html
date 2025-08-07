@@ -31,6 +31,11 @@
       display: block;
       margin-bottom: 6px;
     }
+    #saveButton {
+      margin-top: 10px;
+      padding: 6px 12px;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -44,6 +49,8 @@
 
     <label for="brushSize">Brush Size</label>
     <input type="range" id="brushSize" min="1" max="20" value="4">
+
+    <button id="saveButton">Save Drawing</button>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
@@ -55,16 +62,26 @@
     const errorDiv = document.getElementById('error-message');
     const colorPicker = document.getElementById('colorPicker');
     const brushSizeSlider = document.getElementById('brushSize');
+    const saveButton = document.getElementById('saveButton');
 
-    let drawing = false;
-    let lastX, lastY;
-    let color = colorPicker.value;
     let brushSize = parseInt(brushSizeSlider.value);
+    let colors = ['#00ff00', '#ff00ff'];
+    let lastColors = {}; // per-hand color
+    let lastPositions = {}; // per-hand position
     let lastPinchToggleTime = 0;
     let lastClearGestureTime = 0;
 
-    colorPicker.addEventListener('input', () => color = colorPicker.value);
+    colorPicker.addEventListener('input', () => {
+      colors[0] = colorPicker.value;
+    });
     brushSizeSlider.addEventListener('input', () => brushSize = parseInt(brushSizeSlider.value));
+
+    saveButton.addEventListener('click', () => {
+      const link = document.createElement('a');
+      link.download = 'drawing.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
 
     function showError(message) {
       errorDiv.textContent = message;
@@ -103,7 +120,7 @@
       return tipIds.every(id => landmarks[id].y < landmarks[0].y);
     }
 
-    const hands = new Hands({locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+    const hands = new Hands({ locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
     hands.setOptions({
       maxNumHands: 2,
       modelComplexity: 1,
@@ -111,23 +128,28 @@
       minTrackingConfidence: 0.5
     });
 
-    const lastPositions = {};
-
     hands.onResults(results => {
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         results.multiHandLandmarks.forEach((landmarks, i) => {
           drawHandLandmarks(landmarks);
 
           const now = Date.now();
+          const id = 'hand' + i;
 
           if (isPinching(landmarks) && now - lastPinchToggleTime > 1000) {
-            color = (color === '#00ff00') ? '#ff00ff' : '#00ff00';
-            colorPicker.value = color;
+            const colorIndex = colors.indexOf(lastColors[id] || colors[i % colors.length]);
+            const newColor = colorIndex === 0 ? colors[1] : colors[0];
+            lastColors[id] = newColor;
             lastPinchToggleTime = now;
+          }
+
+          if (!lastColors[id]) {
+            lastColors[id] = colors[i % colors.length];
           }
 
           if (isOpenPalm(landmarks) && now - lastClearGestureTime > 1500) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            lastPositions = {};
             lastClearGestureTime = now;
             return;
           }
@@ -136,18 +158,16 @@
           const x = indexFinger.x * canvas.width;
           const y = indexFinger.y * canvas.height;
 
-          const id = 'hand' + i;
           if (!lastPositions[id]) lastPositions[id] = { x, y };
 
-          ctx.strokeStyle = color;
+          ctx.strokeStyle = lastColors[id];
           ctx.lineWidth = brushSize;
           ctx.beginPath();
           ctx.moveTo(lastPositions[id].x, lastPositions[id].y);
           ctx.lineTo(x, y);
           ctx.stroke();
 
-          lastPositions[id].x = x;
-          lastPositions[id].y = y;
+          lastPositions[id] = { x, y };
         });
       }
     });
