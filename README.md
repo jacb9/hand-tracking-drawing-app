@@ -11,6 +11,7 @@ This is a browser-based HTML5 app that lets you draw on a canvas using **your in
 - 🎨 Pinch gesture (thumb + index finger) toggles brush color (lime ↔ magenta)
 - 🧼 Open palm gesture clears the canvas
 - 👁️ Visual feedback for hand landmarks
+- 🧰 On-screen UI controls for color and brush size
 
 ---
 
@@ -22,6 +23,7 @@ This is a browser-based HTML5 app that lets you draw on a canvas using **your in
 4. Move your index finger to start drawing
 5. **Pinch gesture (index + thumb tip)** to change brush color
 6. **Open palm gesture (all fingers extended)** to clear the canvas
+7. Use the on-screen UI to pick a color and adjust brush size manually
 
 ---
 
@@ -33,13 +35,14 @@ This is a browser-based HTML5 app that lets you draw on a canvas using **your in
 - Tracks gestures:
   - **Pinch** = distance between index (8) and thumb (4) below threshold
   - **Open palm** = finger tips (8, 12, 16, 20) above wrist (0)
+- Syncs on-screen color/size controls with gesture events
 
 ---
 
-## 🛠️ Planned Features
+## ⚙️ UI Controls
 
-- Gesture to change brush size
-- On-screen UI for tool and color selection
+- 🎨 **Color Picker**: change brush color manually
+- 📏 **Brush Size Slider**: adjust stroke thickness from 1–20px
 
 ---
 
