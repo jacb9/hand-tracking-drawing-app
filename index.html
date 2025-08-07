@@ -105,53 +105,50 @@
 
     const hands = new Hands({locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
     hands.setOptions({
-      maxNumHands: 1,
+      maxNumHands: 2,
       modelComplexity: 1,
       minDetectionConfidence: 0.7,
       minTrackingConfidence: 0.5
     });
 
+    const lastPositions = {};
+
     hands.onResults(results => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const landmarks = results.multiHandLandmarks[0];
-        drawHandLandmarks(landmarks);
+        results.multiHandLandmarks.forEach((landmarks, i) => {
+          drawHandLandmarks(landmarks);
 
-        const now = Date.now();
+          const now = Date.now();
 
-        if (isPinching(landmarks) && now - lastPinchToggleTime > 1000) {
-          color = (color === '#00ff00') ? '#ff00ff' : '#00ff00';
-          colorPicker.value = color;
-          lastPinchToggleTime = now;
-        }
+          if (isPinching(landmarks) && now - lastPinchToggleTime > 1000) {
+            color = (color === '#00ff00') ? '#ff00ff' : '#00ff00';
+            colorPicker.value = color;
+            lastPinchToggleTime = now;
+          }
 
-        if (isOpenPalm(landmarks) && now - lastClearGestureTime > 1500) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          lastClearGestureTime = now;
-          return;
-        }
+          if (isOpenPalm(landmarks) && now - lastClearGestureTime > 1500) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            lastClearGestureTime = now;
+            return;
+          }
 
-        const indexFinger = landmarks[8];
-        const x = indexFinger.x * canvas.width;
-        const y = indexFinger.y * canvas.height;
+          const indexFinger = landmarks[8];
+          const x = indexFinger.x * canvas.width;
+          const y = indexFinger.y * canvas.height;
 
-        if (!drawing) {
-          lastX = x;
-          lastY = y;
-          drawing = true;
-        }
+          const id = 'hand' + i;
+          if (!lastPositions[id]) lastPositions[id] = { x, y };
 
-        ctx.strokeStyle = color;
-        ctx.lineWidth = brushSize;
-        ctx.beginPath();
-        ctx.moveTo(lastX, lastY);
-        ctx.lineTo(x, y);
-        ctx.stroke();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = brushSize;
+          ctx.beginPath();
+          ctx.moveTo(lastPositions[id].x, lastPositions[id].y);
+          ctx.lineTo(x, y);
+          ctx.stroke();
 
-        lastX = x;
-        lastY = y;
-      } else {
-        drawing = false;
+          lastPositions[id].x = x;
+          lastPositions[id].y = y;
+        });
       }
     });
 
