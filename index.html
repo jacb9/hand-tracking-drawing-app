@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hand-Tracking Drawing App</title>
   <style>
-    body { margin: 0; overflow: hidden; background: #111; }
+    body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
     canvas { position: absolute; top: 0; left: 0; z-index: 1; }
     video { display: none; }
     #error-message {
@@ -16,8 +16,20 @@
       background: rgba(0,0,0,0.7);
       padding: 10px;
       border-radius: 5px;
-      font-family: sans-serif;
-      z-index: 2;
+      z-index: 3;
+    }
+    #controls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 3;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 10px;
+      border-radius: 10px;
+    }
+    #controls label, #controls input, #controls select {
+      display: block;
+      margin-bottom: 6px;
     }
   </style>
 </head>
@@ -26,6 +38,14 @@
   <video id="video" autoplay playsinline></video>
   <canvas id="output"></canvas>
 
+  <div id="controls">
+    <label for="colorPicker">Brush Color</label>
+    <input type="color" id="colorPicker" value="#00ff00">
+
+    <label for="brushSize">Brush Size</label>
+    <input type="range" id="brushSize" min="1" max="20" value="4">
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
   <script>
@@ -33,9 +53,18 @@
     const canvas = document.getElementById('output');
     const ctx = canvas.getContext('2d');
     const errorDiv = document.getElementById('error-message');
+    const colorPicker = document.getElementById('colorPicker');
+    const brushSizeSlider = document.getElementById('brushSize');
+
     let drawing = false;
     let lastX, lastY;
-    let color = 'lime';
+    let color = colorPicker.value;
+    let brushSize = parseInt(brushSizeSlider.value);
+    let lastPinchToggleTime = 0;
+    let lastClearGestureTime = 0;
+
+    colorPicker.addEventListener('input', () => color = colorPicker.value);
+    brushSizeSlider.addEventListener('input', () => brushSize = parseInt(brushSizeSlider.value));
 
     function showError(message) {
       errorDiv.textContent = message;
@@ -69,6 +98,11 @@
       return distance < 0.05;
     }
 
+    function isOpenPalm(landmarks) {
+      const tipIds = [8, 12, 16, 20];
+      return tipIds.every(id => landmarks[id].y < landmarks[0].y);
+    }
+
     const hands = new Hands({locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
     hands.setOptions({
       maxNumHands: 1,
@@ -83,8 +117,18 @@
         const landmarks = results.multiHandLandmarks[0];
         drawHandLandmarks(landmarks);
 
-        if (isPinching(landmarks)) {
-          color = color === 'lime' ? 'magenta' : 'lime';
+        const now = Date.now();
+
+        if (isPinching(landmarks) && now - lastPinchToggleTime > 1000) {
+          color = (color === '#00ff00') ? '#ff00ff' : '#00ff00';
+          colorPicker.value = color;
+          lastPinchToggleTime = now;
+        }
+
+        if (isOpenPalm(landmarks) && now - lastClearGestureTime > 1500) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          lastClearGestureTime = now;
+          return;
         }
 
         const indexFinger = landmarks[8];
@@ -98,7 +142,7 @@
         }
 
         ctx.strokeStyle = color;
-        ctx.lineWidth = 4;
+        ctx.lineWidth = brushSize;
         ctx.beginPath();
         ctx.moveTo(lastX, lastY);
         ctx.lineTo(x, y);
