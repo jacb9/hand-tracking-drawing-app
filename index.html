@@ -2,56 +2,33 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Hand Drawing App</title>
+  <title>Hand-Tracking Drawing App</title>
   <style>
     body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
     canvas { position: absolute; top: 0; left: 0; z-index: 1; }
     video { display: none; }
-    #error-message {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      color: red;
-      background: rgba(0,0,0,0.7);
-      padding: 10px;
-      border-radius: 5px;
-      z-index: 3;
-    }
     #controls {
       position: absolute;
       top: 10px;
       right: 10px;
-      z-index: 3;
-      background: rgba(255, 255, 255, 0.95);
+      background: rgba(255, 255, 255, 0.9);
       padding: 10px;
       border-radius: 10px;
+      z-index: 2;
     }
-    #controls label, #controls input {
+    #controls input, #controls button {
       display: block;
-      margin-bottom: 5px;
-    }
-    #saveButton {
-      margin-top: 8px;
-      padding: 6px 12px;
+      margin: 6px 0;
     }
   </style>
 </head>
 <body>
   <video id="video" autoplay playsinline></video>
   <canvas id="output"></canvas>
-  <div id="error-message" style="display:none;"></div>
 
   <div id="controls">
-    <label>Brush Size</label>
+    <label for="brushSize">Brush Size</label>
     <input type="range" id="brushSize" min="1" max="20" value="4">
-
-    <label>Red</label>
-    <input type="range" id="r" min="0" max="255" value="0">
-    <label>Green</label>
-    <input type="range" id="g" min="0" max="255" value="255">
-    <label>Blue</label>
-    <input type="range" id="b" min="0" max="255" value="0">
-
     <button id="saveButton">Save Drawing</button>
   </div>
 
@@ -61,20 +38,16 @@
     const video = document.getElementById('video');
     const canvas = document.getElementById('output');
     const ctx = canvas.getContext('2d');
-    const errorDiv = document.getElementById('error-message');
     const brushSizeInput = document.getElementById('brushSize');
-    const rInput = document.getElementById('r');
-    const gInput = document.getElementById('g');
-    const bInput = document.getElementById('b');
     const saveButton = document.getElementById('saveButton');
 
-    const rainbow = ['#ff0000', '#ffa500', '#ffff00', '#00ff00', '#0000ff', '#4b0082', '#ee82ee'];
-    let lastColors = {};
-    let lastPositions = {};
-    let lastColorIndex = {};
-    let brushSize = parseInt(brushSizeInput.value);
+    const roygbiv = ['#ff0000', '#ff7f00', '#ffff00', '#00ff00', '#0000ff', '#4b0082', '#8b00ff'];
 
-    let lastPinchTime = 0;
+    let brushSize = parseInt(brushSizeInput.value);
+    let lastPositions = {};
+    let colorIndex = {};
+    let colorByHand = {};
+    let lastPinchTime = {};
     let lastClearTime = 0;
 
     function resizeCanvas() {
@@ -95,24 +68,15 @@
       link.click();
     });
 
-    function showError(msg) {
-      errorDiv.textContent = msg;
-      errorDiv.style.display = 'block';
-    }
-
     function isPinching(landmarks) {
       const dx = landmarks[8].x - landmarks[4].x;
       const dy = landmarks[8].y - landmarks[4].y;
-      return Math.sqrt(dx * dx + dy * dy) < 0.05;
+      return Math.sqrt(dx * dx + dy * dy) < 0.04;
     }
 
     function isOpenPalm(landmarks) {
       const tipIds = [8, 12, 16, 20];
       return tipIds.every(id => landmarks[id].y < landmarks[0].y);
-    }
-
-    function getRGBColor() {
-      return `rgb(${rInput.value},${gInput.value},${bInput.value})`;
     }
 
     const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
@@ -129,11 +93,11 @@
       if (results.multiHandLandmarks) {
         results.multiHandLandmarks.forEach((landmarks, i) => {
           const id = `hand${i}`;
-          const index = landmarks[8];
-          const x = index.x * canvas.width;
-          const y = index.y * canvas.height;
+          const tip = landmarks[8];
+          const x = tip.x * canvas.width;
+          const y = tip.y * canvas.height;
 
-          // gesture: open palm to clear
+          // Clear only on open palm
           if (isOpenPalm(landmarks) && now - lastClearTime > 1500) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             lastPositions = {};
@@ -141,22 +105,24 @@
             return;
           }
 
-          // gesture: pinch to change color
-          if (isPinching(landmarks) && now - lastPinchTime > 1000) {
-            const currIndex = lastColorIndex[id] || 0;
-            const nextIndex = (currIndex + 1) % rainbow.length;
-            lastColors[id] = rainbow[nextIndex];
-            lastColorIndex[id] = nextIndex;
-            lastPinchTime = now;
+          // Pinch to cycle color
+          if (isPinching(landmarks)) {
+            if (!lastPinchTime[id] || now - lastPinchTime[id] > 1000) {
+              colorIndex[id] = (colorIndex[id] || 0) + 1;
+              if (colorIndex[id] >= roygbiv.length) colorIndex[id] = 0;
+              colorByHand[id] = roygbiv[colorIndex[id]];
+              lastPinchTime[id] = now;
+            }
           }
 
-          // init color if missing
-          if (!lastColors[id]) lastColors[id] = getRGBColor();
+          if (!colorByHand[id]) {
+            colorIndex[id] = i % roygbiv.length;
+            colorByHand[id] = roygbiv[colorIndex[id]];
+          }
 
-          // draw from previous position to current
           if (!lastPositions[id]) lastPositions[id] = { x, y };
 
-          ctx.strokeStyle = lastColors[id];
+          ctx.strokeStyle = colorByHand[id];
           ctx.lineWidth = brushSize;
           ctx.beginPath();
           ctx.moveTo(lastPositions[id].x, lastPositions[id].y);
@@ -175,6 +141,7 @@
       width: 640,
       height: 480
     });
+
     camera.start();
   </script>
 </body>
