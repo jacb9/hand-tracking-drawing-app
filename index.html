@@ -2,8 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hand-Tracking Drawing App</title>
+  <title>Hand Drawing App</title>
   <style>
     body { margin: 0; overflow: hidden; background: #111; font-family: sans-serif; }
     canvas { position: absolute; top: 0; left: 0; z-index: 1; }
@@ -23,32 +22,35 @@
       top: 10px;
       right: 10px;
       z-index: 3;
-      background: rgba(255, 255, 255, 0.9);
+      background: rgba(255, 255, 255, 0.95);
       padding: 10px;
       border-radius: 10px;
     }
-    #controls label, #controls input, #controls select {
+    #controls label, #controls input {
       display: block;
-      margin-bottom: 6px;
+      margin-bottom: 5px;
     }
     #saveButton {
-      margin-top: 10px;
+      margin-top: 8px;
       padding: 6px 12px;
-      font-size: 14px;
     }
   </style>
 </head>
 <body>
-  <div id="error-message" style="display:none;"></div>
   <video id="video" autoplay playsinline></video>
   <canvas id="output"></canvas>
+  <div id="error-message" style="display:none;"></div>
 
   <div id="controls">
-    <label for="colorPicker">Brush Color</label>
-    <input type="color" id="colorPicker" value="#00ff00">
-
-    <label for="brushSize">Brush Size</label>
+    <label>Brush Size</label>
     <input type="range" id="brushSize" min="1" max="20" value="4">
+
+    <label>Red</label>
+    <input type="range" id="r" min="0" max="255" value="0">
+    <label>Green</label>
+    <input type="range" id="g" min="0" max="255" value="255">
+    <label>Blue</label>
+    <input type="range" id="b" min="0" max="255" value="0">
 
     <button id="saveButton">Save Drawing</button>
   </div>
@@ -60,33 +62,20 @@
     const canvas = document.getElementById('output');
     const ctx = canvas.getContext('2d');
     const errorDiv = document.getElementById('error-message');
-    const colorPicker = document.getElementById('colorPicker');
-    const brushSizeSlider = document.getElementById('brushSize');
+    const brushSizeInput = document.getElementById('brushSize');
+    const rInput = document.getElementById('r');
+    const gInput = document.getElementById('g');
+    const bInput = document.getElementById('b');
     const saveButton = document.getElementById('saveButton');
 
-    let brushSize = parseInt(brushSizeSlider.value);
-    let colors = ['#00ff00', '#ff00ff'];
-    let lastColors = {}; // per-hand color
-    let lastPositions = {}; // per-hand position
-    let lastPinchToggleTime = 0;
-    let lastClearGestureTime = 0;
+    const rainbow = ['#ff0000', '#ffa500', '#ffff00', '#00ff00', '#0000ff', '#4b0082', '#ee82ee'];
+    let lastColors = {};
+    let lastPositions = {};
+    let lastColorIndex = {};
+    let brushSize = parseInt(brushSizeInput.value);
 
-    colorPicker.addEventListener('input', () => {
-      colors[0] = colorPicker.value;
-    });
-    brushSizeSlider.addEventListener('input', () => brushSize = parseInt(brushSizeSlider.value));
-
-    saveButton.addEventListener('click', () => {
-      const link = document.createElement('a');
-      link.download = 'drawing.png';
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-    });
-
-    function showError(message) {
-      errorDiv.textContent = message;
-      errorDiv.style.display = 'block';
-    }
+    let lastPinchTime = 0;
+    let lastClearTime = 0;
 
     function resizeCanvas() {
       canvas.width = window.innerWidth;
@@ -95,24 +84,26 @@
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    function drawHandLandmarks(landmarks) {
-      ctx.fillStyle = 'rgba(255,255,255,0.4)';
-      for (const point of landmarks) {
-        const x = point.x * canvas.width;
-        const y = point.y * canvas.height;
-        ctx.beginPath();
-        ctx.arc(x, y, 5, 0, 2 * Math.PI);
-        ctx.fill();
-      }
+    brushSizeInput.addEventListener('input', () => {
+      brushSize = parseInt(brushSizeInput.value);
+    });
+
+    saveButton.addEventListener('click', () => {
+      const link = document.createElement('a');
+      link.download = 'drawing.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
+
+    function showError(msg) {
+      errorDiv.textContent = msg;
+      errorDiv.style.display = 'block';
     }
 
     function isPinching(landmarks) {
-      const indexTip = landmarks[8];
-      const thumbTip = landmarks[4];
-      const dx = indexTip.x - thumbTip.x;
-      const dy = indexTip.y - thumbTip.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      return distance < 0.05;
+      const dx = landmarks[8].x - landmarks[4].x;
+      const dy = landmarks[8].y - landmarks[4].y;
+      return Math.sqrt(dx * dx + dy * dy) < 0.05;
     }
 
     function isOpenPalm(landmarks) {
@@ -120,7 +111,11 @@
       return tipIds.every(id => landmarks[id].y < landmarks[0].y);
     }
 
-    const hands = new Hands({ locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+    function getRGBColor() {
+      return `rgb(${rInput.value},${gInput.value},${bInput.value})`;
+    }
+
+    const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
     hands.setOptions({
       maxNumHands: 2,
       modelComplexity: 1,
@@ -129,35 +124,36 @@
     });
 
     hands.onResults(results => {
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+      const now = Date.now();
+
+      if (results.multiHandLandmarks) {
         results.multiHandLandmarks.forEach((landmarks, i) => {
-          drawHandLandmarks(landmarks);
+          const id = `hand${i}`;
+          const index = landmarks[8];
+          const x = index.x * canvas.width;
+          const y = index.y * canvas.height;
 
-          const now = Date.now();
-          const id = 'hand' + i;
-
-          if (isPinching(landmarks) && now - lastPinchToggleTime > 1000) {
-            const colorIndex = colors.indexOf(lastColors[id] || colors[i % colors.length]);
-            const newColor = colorIndex === 0 ? colors[1] : colors[0];
-            lastColors[id] = newColor;
-            lastPinchToggleTime = now;
-          }
-
-          if (!lastColors[id]) {
-            lastColors[id] = colors[i % colors.length];
-          }
-
-          if (isOpenPalm(landmarks) && now - lastClearGestureTime > 1500) {
+          // gesture: open palm to clear
+          if (isOpenPalm(landmarks) && now - lastClearTime > 1500) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             lastPositions = {};
-            lastClearGestureTime = now;
+            lastClearTime = now;
             return;
           }
 
-          const indexFinger = landmarks[8];
-          const x = indexFinger.x * canvas.width;
-          const y = indexFinger.y * canvas.height;
+          // gesture: pinch to change color
+          if (isPinching(landmarks) && now - lastPinchTime > 1000) {
+            const currIndex = lastColorIndex[id] || 0;
+            const nextIndex = (currIndex + 1) % rainbow.length;
+            lastColors[id] = rainbow[nextIndex];
+            lastColorIndex[id] = nextIndex;
+            lastPinchTime = now;
+          }
 
+          // init color if missing
+          if (!lastColors[id]) lastColors[id] = getRGBColor();
+
+          // draw from previous position to current
           if (!lastPositions[id]) lastPositions[id] = { x, y };
 
           ctx.strokeStyle = lastColors[id];
@@ -172,30 +168,14 @@
       }
     });
 
-    async function startCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        video.srcObject = stream;
-
-        const camera = new Camera(video, {
-          onFrame: async () => {
-            await hands.send({ image: video });
-          },
-          width: 640,
-          height: 480
-        });
-
-        camera.start();
-      } catch (err) {
-        if (err.name === 'NotAllowedError') {
-          showError('Camera permission denied. Please allow access and ensure HTTPS is used.');
-        } else {
-          showError(`Failed to acquire camera feed: ${err.message}`);
-        }
-      }
-    }
-
-    startCamera();
+    const camera = new Camera(video, {
+      onFrame: async () => {
+        await hands.send({ image: video });
+      },
+      width: 640,
+      height: 480
+    });
+    camera.start();
   </script>
 </body>
 </html>
